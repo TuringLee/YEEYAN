@@ -7,6 +7,7 @@ import cPickle as pickle
 import HTMLParser
 from bs4 import BeautifulSoup
 import argparse
+from MySQLdb import cursors
 
 DB_USER = 'root'
 DB_PASSWD = 'ltj123'
