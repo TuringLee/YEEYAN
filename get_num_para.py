@@ -2,9 +2,14 @@
 import os
 import re
 import langid
+import argparse
 
-FILE_DIR = '/home/lee/YEEYAN/parser_result'
-SAVE_DIR = '/home/lee/YEEYAN/pretty_result'
+parser = argparse.ArgumentParser()
+parser.add_argument('input_file_path')
+parser.add_argument('output_file_path')
+args = parser.parse_args()
+FILE_DIR = args.input_file_path
+SAVE_DIR = args.output_file_path
 
 pattern_blankline = re.compile('\s\s+')
 

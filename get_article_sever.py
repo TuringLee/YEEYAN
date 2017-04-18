@@ -2,12 +2,24 @@
 
 import os
 import re
+import MySQLdb
 import cPickle as pickle
 import HTMLParser
 from bs4 import BeautifulSoup
+import argparse
 
-PARSED_DIR = '/home/lee/YEEYAN_/data'
-PARSED_SAVE_DIR = '/home/lee/YEEYAN_/parser_result'
+DB_USER = 'root'
+DB_PASSWD = 'ltj123'
+DB_NAME = 'YEEYAN'
+TB_NAME = 'translations'
+
+parser = argparse.ArgumentParser()
+parser.add_argument('output_file_path')
+args = parser.parse_args()
+PARSED_SAVE_DIR = args.output_file_path
+
+miss_trans_ids = []
+miss_origi_ids = []
 
 parser = HTMLParser.HTMLParser()
 
@@ -21,18 +33,41 @@ pattern_dot = re.compile('\.')
 pattern_quop_hk = re.compile(u'[」』]')
 pattern_quob_hk = re.compile(u'[「『]')
 
+def connect_db(user, passwd, db, host='localhost', port=3306):
+    return MySQLdb.connect(
+            host=host,
+            user=user,
+            passwd=passwd,
+            db=db,
+            port=port,
+            cursorclass=cursors.SSCursor,
+            charset='utf8')
+
+def select_cursor(conn):
+    cur = conn.cursor()
+    # conn.cursor(cursors.SSCursor)
+    cur.execute('select * from '+TB_NAME)
+    return cur
+
+def close_all(conn, cur):
+    cur.close()
+    conn.close()
     
 def parse_row(row):
     article_id = row[0]
     translation_content = row[1]
     original_content = row[2]
-
-    paras_zh = parse_html(translation_content,'zh')
-    paras_en = parse_html(original_content)
-    zh_path = os.path.join(PARSED_SAVE_DIR, str(article_id)+'_zh.txt')
-    en_path = os.path.join(PARSED_SAVE_DIR, str(article_id)+'_en.txt')
-    save_parse(zh_path, paras_zh, article_id)
-    save_parse(en_path, paras_en, article_id)
+    if len(translation_content) < 2:
+        miss_trans_ids.append(article_id)
+    elif len(original_content) < 2:
+        miss_origi_ids.append(article_id)
+    else:
+        paras_zh = parse_html(translation_content,'zh')
+        paras_en = parse_html(original_content)
+        zh_path = os.path.join(PARSED_SAVE_DIR, str(article_id)+'_zh.txt')
+        en_path = os.path.join(PARSED_SAVE_DIR, str(article_id)+'_en.txt')
+        save_parse(zh_path, paras_zh, article_id)
+        save_parse(en_path, paras_en, article_id)
 
 def save_parse(path, paras, article_id):
     if os.path.exists(path):
@@ -74,42 +109,30 @@ def get_paras(html):
             t.append(str(para.strip())+'\n')
     return t
 
+def save_miss():
+    try:
+        with open('miss.pkl', 'wb') as fp:
+            miss = {'miss_trans': miss_trans_ids, 'miss_origi': miss_origi_ids}
+            pickle.dump(miss, fp, True)
+    except IOError:
+        print 'save miss error!'
 
 # main field
 if __name__ == '__main__':
 
-    ids = []
+    i = 1
+    conn = connect_db(DB_USER, DB_PASSWD, DB_NAME)
+    cur = select_cursor(conn)
 
-    file_list = os.listdir(PARSED_DIR)
+    row = cur.fetchone()
 
-    for file in file_list:
-        id = file.split('_')[0]
-        if id in ids:
-            continue
-        ids.append(id)
-
-
-    print "parser now..."
-
-    for i,id in enumerate(ids):
-        
-        file_path_zh = os.path.join(PARSED_DIR,str(id)+'_zh.txt')
-        file_path_en = os.path.join(PARSED_DIR,str(id)+'_en.txt')
-
-        if not ( os.path.exists(file_path_zh) and os.path.exists(file_path_en) ):
-            continue
-
-        f1 = open(file_path_zh)
-        f2 = open(file_path_en)
-
-        row = (id,f1.read().decode('utf8'),f2.read().decode('utf8'))
-
-        f1.close()
-        f2.close()
-
+    while row is not None:
         parse_row(row)
+        row = cur.fetchone()
+        i += 1
 
         if i % 100 ==0:
             print str(i)+' files has been parsered!'
-
+    save_miss()
+    close_all(conn, cur)
     print 'ALL DONE'
